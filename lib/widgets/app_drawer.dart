@@ -62,7 +62,7 @@ class AppDrawer extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'الإصدار 1.0.0 Pro',
+                    'الإصدار 1.1.0 Pro',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 11,
