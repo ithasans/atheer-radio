@@ -29,8 +29,3 @@ jobs:
         with:
           name: atheer-radio-ios-ipa
           path: AtheerRadio_iOS.ipa
-      - name: Upload Obfuscation Symbols
-        uses: actions/upload-artifact@v4
-        with:
-          name: atheer-radio-ios-symbols
-          path: build/symbols
