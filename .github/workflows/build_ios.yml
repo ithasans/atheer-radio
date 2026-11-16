@@ -1,0 +1,36 @@
+name: Build Obfuscated iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.2'
+          channel: 'stable'
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build Obfuscated iOS App
+        run: flutter build ios --release --no-codesign --obfuscate --split-debug-info=build/symbols
+      - name: Package Payload to IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r AtheerRadio_iOS.ipa Payload
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: atheer-radio-ios-ipa
+          path: AtheerRadio_iOS.ipa
+      - name: Upload Obfuscation Symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: atheer-radio-ios-symbols
+          path: build/symbols
