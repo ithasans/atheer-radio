@@ -8,6 +8,7 @@ import 'package:myradio1/providers/localization_provider.dart';
 import 'package:myradio1/providers/recent_stations_provider.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
 import 'package:myradio1/theme/app_theme.dart';
+import 'package:myradio1/utils/encoding_utils.dart';
 import 'package:myradio1/widgets/audio_visualizer.dart';
 
 class DriveModeScreen extends ConsumerWidget {
@@ -106,7 +107,8 @@ class DriveModeScreen extends ConsumerWidget {
                   stream: audioHandler.mediaItem,
                   builder: (context, mediaSnap) {
                     final media = mediaSnap.data;
-                    final icyTitle = (media?.extras?['icyTitle'] ?? '').toString().trim();
+                    final rawIcy = (media?.extras?['icyTitle'] ?? '').toString().trim();
+                    final icyTitle = EncodingUtils.decodeStreamMetadata(rawIcy);
 
                     return LayoutBuilder(
                       builder: (context, constraints) {

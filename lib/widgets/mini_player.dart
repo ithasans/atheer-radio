@@ -2,8 +2,10 @@ import 'dart:ui';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:myradio1/models/station.dart';
+import 'package:myradio1/providers/localization_provider.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
 import 'package:myradio1/theme/app_theme.dart';
+import 'package:myradio1/utils/encoding_utils.dart';
 import 'package:myradio1/widgets/audio_visualizer.dart';
 import 'package:myradio1/widgets/station_avatar.dart';
 
@@ -13,6 +15,8 @@ class MiniPlayer extends StatelessWidget {
   final bool isLoading;
   final AppAudioHandler audioHandler;
   final VoidCallback onExpand;
+  final VoidCallback? onClose;
+  final String lang;
 
   const MiniPlayer({
     super.key,
@@ -21,6 +25,8 @@ class MiniPlayer extends StatelessWidget {
     required this.isLoading,
     required this.audioHandler,
     required this.onExpand,
+    this.onClose,
+    this.lang = 'ar',
   });
 
   @override
@@ -66,9 +72,10 @@ class MiniPlayer extends StatelessWidget {
                         builder: (context, mediaSnap) {
                           final media = mediaSnap.data;
                           final matches = media?.id == station.playableUrl;
-                          final icyTitle = matches
+                          final rawIcy = matches
                               ? (media?.extras?['icyTitle'] ?? '').toString().trim()
                               : '';
+                          final icyTitle = EncodingUtils.decodeStreamMetadata(rawIcy);
                           final subtitle = icyTitle.isNotEmpty
                               ? icyTitle
                               : (station.country ?? (station.tagList.isNotEmpty ? station.tagList.first : 'بث مباشر'));
@@ -158,7 +165,14 @@ class MiniPlayer extends StatelessWidget {
                       ),
                     IconButton(
                       icon: const Icon(Icons.close_rounded, color: AppTheme.textMuted, size: 20),
-                      onPressed: () => audioHandler.stop(),
+                      tooltip: AppStrings.get('close', lang),
+                      onPressed: () {
+                        if (onClose != null) {
+                          onClose!();
+                        } else {
+                          audioHandler.stop();
+                        }
+                      },
                     ),
                   ],
                 ),

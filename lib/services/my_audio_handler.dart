@@ -3,6 +3,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
+import 'package:myradio1/utils/encoding_utils.dart';
 
 class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAudioHandler {
   final AndroidEqualizer _equalizer = AndroidEqualizer();
@@ -20,23 +21,25 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
 
     // Live Stream ICY Metadata Extraction (Title, Track, Artist)
     _player.icyMetadataStream.listen((icy) {
-      final icyTitle = icy?.info?.title;
-      final stationName = icy?.headers?.name;
+      final rawIcyTitle = icy?.info?.title;
+      final rawStationName = icy?.headers?.name;
       final current = mediaItem.value;
       if (current == null) return;
 
-      if (icyTitle != null && icyTitle.trim().isNotEmpty) {
-        final trimmed = icyTitle.trim();
+      final icyTitle = EncodingUtils.decodeStreamMetadata(rawIcyTitle);
+      final stationName = EncodingUtils.decodeStreamMetadata(rawStationName);
+
+      if (icyTitle.isNotEmpty) {
         final existingExtras = Map<String, dynamic>.from(current.extras ?? const {});
-        existingExtras['icyTitle'] = trimmed;
+        existingExtras['icyTitle'] = icyTitle;
         mediaItem.add(
           current.copyWith(
-            artist: trimmed,
+            artist: icyTitle,
             extras: existingExtras,
           ),
         );
-      } else if (stationName != null && stationName.trim().isNotEmpty && current.title.isEmpty) {
-        mediaItem.add(current.copyWith(title: stationName.trim()));
+      } else if (stationName.isNotEmpty && current.title.isEmpty) {
+        mediaItem.add(current.copyWith(title: stationName));
       }
     });
 
@@ -67,11 +70,14 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
     _lastUrl = url;
     _retryCount = 0;
     final uri = Uri.parse(url);
-    final country = (artist != null && artist.trim().isNotEmpty) ? artist.trim() : 'بث حي';
+    final decodedArtist = EncodingUtils.decodeStreamMetadata(artist);
+    final country = decodedArtist.isNotEmpty ? decodedArtist : 'بث حي';
+    final decodedTitle = EncodingUtils.decodeStreamMetadata(title);
+    final cleanTitle = decodedTitle.isNotEmpty ? decodedTitle : 'راديو مباشر';
 
     final item = MediaItem(
       id: uri.toString(),
-      title: (title != null && title.trim().isNotEmpty) ? title.trim() : 'راديو مباشر',
+      title: cleanTitle,
       artist: country,
       artUri: (artUri != null && artUri.isNotEmpty) ? Uri.tryParse(artUri) : null,
       extras: {

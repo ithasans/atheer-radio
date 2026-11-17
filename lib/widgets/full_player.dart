@@ -11,6 +11,7 @@ import 'package:myradio1/screens/drive_mode_screen.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
 import 'package:myradio1/services/share_service.dart';
 import 'package:myradio1/theme/app_theme.dart';
+import 'package:myradio1/utils/encoding_utils.dart';
 import 'package:myradio1/widgets/audio_visualizer.dart';
 import 'package:myradio1/widgets/equalizer_sheet.dart';
 import 'package:myradio1/widgets/station_avatar.dart';
@@ -353,9 +354,10 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                                     builder: (context, mediaSnap) {
                                       final media = mediaSnap.data;
                                       final matchesStation = media?.id == widget.station.playableUrl;
-                                      final icyTitle = matchesStation
+                                      final rawIcy = matchesStation
                                           ? (media?.extras?['icyTitle'] ?? '').toString().trim()
                                           : '';
+                                      final icyTitle = EncodingUtils.decodeStreamMetadata(rawIcy);
                                       if (icyTitle.isEmpty) return const SizedBox.shrink();
 
                                       return Container(

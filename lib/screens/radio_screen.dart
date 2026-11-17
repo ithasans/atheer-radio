@@ -366,10 +366,54 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
 
           return Directionality(
             textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
-            child: Scaffold(
-              drawer: AppDrawer(
-                onGoHome: () => _tabController.animateTo(0),
-              ),
+            child: PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) async {
+                if (didPop) return;
+                if (_searchController.text.isNotEmpty) {
+                  _searchController.clear();
+                  FocusScope.of(context).unfocus();
+                  setState(() {});
+                  _fetchDefaultExploreStations();
+                  return;
+                }
+                final currentFocus = FocusScope.of(context);
+                if (!currentFocus.hasPrimaryFocus && currentFocus.focusedChild != null) {
+                  currentFocus.unfocus();
+                  return;
+                }
+                if (_tabController.index != 0) {
+                  _tabController.animateTo(0);
+                  return;
+                }
+                final shouldExit = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: AppTheme.surfaceElevated,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    title: Text(AppStrings.get('exit_confirm_title', lang)),
+                    content: Text(AppStrings.get('exit_confirm_msg', lang)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: Text(AppStrings.get('cancel', lang)),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentRecord),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: Text(AppStrings.get('exit', lang)),
+                      ),
+                    ],
+                  ),
+                );
+                if (shouldExit == true) {
+                  SystemNavigator.pop();
+                }
+              },
+              child: Scaffold(
+                drawer: AppDrawer(
+                  onGoHome: () => _tabController.animateTo(0),
+                ),
               appBar: AppBar(
                 title: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -438,12 +482,19 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
                       isPlaying: isPlaying,
                       isLoading: isLoading,
                       audioHandler: audioHandler,
+                      lang: lang,
                       onExpand: () => _openFullPlayer(audioHandler, currentStation, lang),
+                      onClose: () {
+                        FocusScope.of(context).unfocus();
+                        audioHandler.stop();
+                        ref.read(currentStationProvider.notifier).state = null;
+                      },
                     ),
                 ],
               ),
             ),
-          );
+          ),
+        );
         },
       ),
       error: (err, s) => Scaffold(
