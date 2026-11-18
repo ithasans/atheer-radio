@@ -64,7 +64,11 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
     try {
       final Directory? musicDir = await getExternalStorageDirectory();
       if (musicDir != null && await musicDir.exists()) {
-        final files = musicDir.listSync().where((f) => f.path.endsWith('.mp3')).toList();
+        const supportedExtensions = ['.mp3', '.m4a', '.aac', '.ogg', '.wav', '.flac', '.ts'];
+        final files = musicDir.listSync().where((f) {
+          final lower = f.path.toLowerCase();
+          return supportedExtensions.any((ext) => lower.endsWith(ext));
+        }).toList();
         files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
         if (mounted) {
           setState(() {
@@ -262,6 +266,19 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
                                         child: Text(
                                           _formatFileSize(stat.size),
                                           style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primary.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3), width: 0.8),
+                                        ),
+                                        child: Text(
+                                          fileName.contains('.') ? fileName.split('.').last.toUpperCase() : 'AUDIO',
+                                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primary),
                                         ),
                                       ),
                                     ],
