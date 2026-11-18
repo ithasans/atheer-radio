@@ -11,6 +11,7 @@ class StationCard extends ConsumerWidget {
   final bool isCurrent;
   final bool isPlaying;
   final VoidCallback onTap;
+  final VoidCallback? onEdit;
 
   const StationCard({
     super.key,
@@ -18,6 +19,7 @@ class StationCard extends ConsumerWidget {
     required this.isCurrent,
     required this.isPlaying,
     required this.onTap,
+    this.onEdit,
   });
 
   @override
@@ -138,6 +140,12 @@ class StationCard extends ConsumerWidget {
                       width: 2.5,
                       color: AppTheme.primary,
                     ),
+                  ),
+                if (onEdit != null)
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, color: AppTheme.textMuted, size: 20),
+                    tooltip: 'تعديل',
+                    onPressed: onEdit,
                   ),
                 IconButton(
                   icon: Icon(

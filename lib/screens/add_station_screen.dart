@@ -6,7 +6,8 @@ import 'package:myradio1/providers/localization_provider.dart';
 import 'package:myradio1/theme/app_theme.dart';
 
 class AddStationScreen extends ConsumerStatefulWidget {
-  const AddStationScreen({super.key});
+  final Station? stationToEdit;
+  const AddStationScreen({super.key, this.stationToEdit});
 
   @override
   ConsumerState<AddStationScreen> createState() => _AddStationScreenState();
@@ -35,6 +36,19 @@ class _AddStationScreenState extends ConsumerState<AddStationScreen> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.stationToEdit != null) {
+      final s = widget.stationToEdit!;
+      _nameController.text = s.name;
+      _countryController.text = s.country ?? '';
+      _urlController.text = s.streamUrl;
+      _latController.text = s.lat != null ? s.lat.toString() : '';
+      _lonController.text = s.lon != null ? s.lon.toString() : '';
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _countryController.dispose();
@@ -50,20 +64,35 @@ class _AddStationScreenState extends ConsumerState<AddStationScreen> {
       final lat = double.tryParse(_latController.text) ?? (_capitals[country]?[0] ?? 24.0);
       final lon = double.tryParse(_lonController.text) ?? (_capitals[country]?[1] ?? 45.0);
 
-      final newStation = Station(
-        id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-        name: _nameController.text.trim(),
-        streamUrl: _urlController.text.trim(),
-        country: _countryController.text.trim(),
-        lat: lat,
-        lon: lon,
-      );
+      if (widget.stationToEdit != null) {
+        final updated = widget.stationToEdit!.copyWith(
+          name: _nameController.text.trim(),
+          country: _countryController.text.trim(),
+          streamUrl: _urlController.text.trim(),
+          directUrl: _urlController.text.trim(),
+          lat: lat,
+          lon: lon,
+        );
+        ref.read(favoritesProvider.notifier).updateStation(widget.stationToEdit!, updated);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppStrings.get('station_updated', lang))),
+        );
+      } else {
+        final newStation = Station(
+          id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+          name: _nameController.text.trim(),
+          streamUrl: _urlController.text.trim(),
+          directUrl: _urlController.text.trim(),
+          country: _countryController.text.trim(),
+          lat: lat,
+          lon: lon,
+        );
+        ref.read(favoritesProvider.notifier).toggleFavorite(newStation);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppStrings.get('station_added', lang))),
+        );
+      }
 
-      ref.read(favoritesProvider.notifier).toggleFavorite(newStation);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.get('station_added', lang))),
-      );
       Navigator.pop(context);
     }
   }
@@ -72,12 +101,13 @@ class _AddStationScreenState extends ConsumerState<AddStationScreen> {
   Widget build(BuildContext context) {
     final lang = ref.watch(localeProvider);
     final isRtl = lang == 'ar';
+    final isEditing = widget.stationToEdit != null;
 
     return Directionality(
       textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(AppStrings.get('add_custom_station', lang)),
+          title: Text(AppStrings.get(isEditing ? 'edit_station' : 'add_custom_station', lang)),
         ),
         body: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -110,15 +140,14 @@ class _AddStationScreenState extends ConsumerState<AddStationScreen> {
                   keyboardType: TextInputType.url,
                   decoration: InputDecoration(
                     labelText: AppStrings.get('stream_url', lang),
-                    hintText: 'https://...',
                     prefixIcon: const Icon(Icons.link_rounded),
                   ),
                   validator: (v) {
-                    final text = v?.trim() ?? '';
-                    if (text.isEmpty) return AppStrings.get('field_required', lang);
-                    final uri = Uri.tryParse(text);
-                    if (uri == null || !(uri.isScheme('http') || uri.isScheme('https')) || uri.host.isEmpty) {
-                      return AppStrings.get('invalid_url', lang);
+                    if (v == null || v.trim().isEmpty) {
+                      return AppStrings.get('field_required', lang);
+                    }
+                    if (!v.trim().startsWith('http://') && !v.trim().startsWith('https://')) {
+                      return 'الرابط يجب أن يبدأ بـ http:// أو https://';
                     }
                     return null;
                   },
@@ -157,9 +186,9 @@ class _AddStationScreenState extends ConsumerState<AddStationScreen> {
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    icon: const Icon(Icons.bookmark_add_rounded),
+                    icon: Icon(isEditing ? Icons.save_rounded : Icons.bookmark_add_rounded),
                     label: Text(
-                      AppStrings.get('save_station', lang),
+                      AppStrings.get(isEditing ? 'save_changes' : 'save_station', lang),
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),

@@ -31,6 +31,38 @@ class Station {
 
   String get playableUrl => (directUrl != null && directUrl!.isNotEmpty) ? directUrl! : streamUrl;
 
+  Station copyWith({
+    String? id,
+    String? name,
+    String? streamUrl,
+    String? directUrl,
+    String? favicon,
+    String? country,
+    String? countryCode,
+    String? tags,
+    String? language,
+    String? codec,
+    int? bitrate,
+    double? lat,
+    double? lon,
+  }) {
+    return Station(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      streamUrl: streamUrl ?? this.streamUrl,
+      directUrl: directUrl ?? this.directUrl,
+      favicon: favicon ?? this.favicon,
+      country: country ?? this.country,
+      countryCode: countryCode ?? this.countryCode,
+      tags: tags ?? this.tags,
+      language: language ?? this.language,
+      codec: codec ?? this.codec,
+      bitrate: bitrate ?? this.bitrate,
+      lat: lat ?? this.lat,
+      lon: lon ?? this.lon,
+    );
+  }
+
   List<String> get tagList {
     if (tags == null || tags!.trim().isEmpty) return [];
     return tags!

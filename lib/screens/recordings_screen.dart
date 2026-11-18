@@ -221,96 +221,117 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
                                   width: isCurrent ? 1.5 : 1.0,
                                 ),
                               ),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                leading: Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: isCurrent ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surfaceElevated,
-                                  ),
-                                  child: IconButton(
-                                    icon: Icon(
-                                      isCurrentlyPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                      color: isCurrent ? AppTheme.primary : AppTheme.textPrimary,
-                                    ),
-                                    onPressed: () => _playRecording(file.path),
-                                  ),
-                                ),
-                                title: Text(
-                                  fileName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: isCurrent ? AppTheme.primary : null,
-                                  ),
-                                ),
-                                subtitle: Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => _playRecording(file.path),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                   child: Row(
                                     children: [
-                                      Text(
-                                        _formatDate(stat.modified),
-                                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                                      ),
-                                      const SizedBox(width: 10),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        width: 44,
+                                        height: 44,
                                         decoration: BoxDecoration(
-                                          color: AppTheme.surface,
-                                          borderRadius: BorderRadius.circular(6),
+                                          shape: BoxShape.circle,
+                                          color: isCurrent ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surfaceElevated,
                                         ),
-                                        child: Text(
-                                          _formatFileSize(stat.size),
-                                          style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                                        child: IconButton(
+                                          icon: Icon(
+                                            isCurrentlyPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                            color: isCurrent ? AppTheme.primary : AppTheme.textPrimary,
+                                          ),
+                                          onPressed: () => _playRecording(file.path),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              fileName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: isCurrent ? AppTheme.primary : null,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Wrap(
+                                              spacing: 6,
+                                              runSpacing: 4,
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              children: [
+                                                Text(
+                                                  _formatDate(stat.modified),
+                                                  style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.surface,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    _formatFileSize(stat.size),
+                                                    style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.primary.withValues(alpha: 0.15),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3), width: 0.8),
+                                                  ),
+                                                  child: Text(
+                                                    fileName.contains('.') ? fileName.split('.').last.toUpperCase() : 'AUDIO',
+                                                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.primary.withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(6),
-                                          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3), width: 0.8),
-                                        ),
-                                        child: Text(
-                                          fileName.contains('.') ? fileName.split('.').last.toUpperCase() : 'AUDIO',
-                                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primary),
-                                        ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (isCurrentlyPlaying)
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(horizontal: 4),
+                                              child: AudioVisualizer(
+                                                isPlaying: true,
+                                                maxHeight: 14,
+                                                width: 2.0,
+                                                color: AppTheme.primary,
+                                              ),
+                                            ),
+                                          IconButton(
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.all(6),
+                                            constraints: const BoxConstraints(),
+                                            tooltip: AppStrings.get('share_recording', lang),
+                                            icon: const Icon(Icons.share_rounded, color: AppTheme.primary, size: 20),
+                                            onPressed: () => ShareService.shareFile(file.path, title: fileName),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          IconButton(
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.all(6),
+                                            constraints: const BoxConstraints(),
+                                            icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.accentRecord, size: 21),
+                                            onPressed: () => _deleteRecording(file, lang),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isCurrentlyPlaying)
-                                      const Padding(
-                                        padding: EdgeInsets.symmetric(horizontal: 4),
-                                        child: AudioVisualizer(
-                                          isPlaying: true,
-                                          maxHeight: 14,
-                                          width: 2.0,
-                                          color: AppTheme.primary,
-                                        ),
-                                      ),
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      tooltip: AppStrings.get('share_recording', lang),
-                                      icon: const Icon(Icons.share_rounded, color: AppTheme.primary, size: 20),
-                                      onPressed: () => ShareService.shareFile(file.path, title: fileName),
-                                    ),
-                                    IconButton(
-                                      visualDensity: VisualDensity.compact,
-                                      icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.accentRecord, size: 21),
-                                      onPressed: () => _deleteRecording(file, lang),
-                                    ),
-                                  ],
-                                ),
-                                onTap: () => _playRecording(file.path),
                               ),
                             );
                           },

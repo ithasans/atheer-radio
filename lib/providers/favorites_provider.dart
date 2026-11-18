@@ -51,6 +51,18 @@ class FavoritesNotifier extends StateNotifier<List<Station>> {
     await _persist();
   }
 
+  Future<void> updateStation(Station oldStation, Station updatedStation) async {
+    final index = state.indexWhere((s) =>
+        s.streamUrl == oldStation.streamUrl ||
+        (s.id.isNotEmpty && s.id == oldStation.id));
+    if (index != -1) {
+      final updatedList = [...state];
+      updatedList[index] = updatedStation;
+      state = updatedList;
+      await _persist();
+    }
+  }
+
   String exportFavoritesJson() {
     return const JsonEncoder.withIndent('  ').convert(
       state.map((s) => s.toMap()).toList(),

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myradio1/services/stream_recorder_service.dart';
 
@@ -18,6 +19,21 @@ void main() {
       final uri = Uri.parse(cleanUrl);
       final isHls = uri.path.toLowerCase().endsWith('.m3u8');
       expect(isHls, isTrue);
+    });
+
+    test('Fmp4AacExtractor parses init segment and extracts ADTS frames', () {
+      final extractor = Fmp4AacExtractor();
+      // Synthetic init segment with 'esds' and ASC tag 0x05 (profile=2, freq=4, chan=2)
+      final initData = Uint8List.fromList([
+        ...[0x65, 0x73, 0x64, 0x73], // 'esds'
+        ...List.filled(10, 0),
+        0x05, 0x80, 0x80, 0x80, 0x02, 0x12, 0x10, // ASC: 12 10
+      ]);
+      extractor.parseInitSegment(initData);
+      expect(extractor.profile, 2);
+      expect(extractor.freqIndex, 4);
+      expect(extractor.chanCfg, 2);
+      expect(extractor.hasConfig, isTrue);
     });
   });
 }

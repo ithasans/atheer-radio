@@ -4,6 +4,114 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+/// Helper to extract raw AAC frames from fragmented MP4 (.m4s) chunks
+/// and wrap each frame with a standard 7-byte ADTS header for immediate, universal playback.
+class Fmp4AacExtractor {
+  int profile = 2; // AAC LC
+  int freqIndex = 4; // 44100 Hz
+  int chanCfg = 2; // Stereo
+  bool hasConfig = false;
+
+  void parseInitSegment(Uint8List data) {
+    final esdsPos = _findPattern(data, [0x65, 0x73, 0x64, 0x73]); // 'esds'
+    if (esdsPos != -1 && esdsPos + 8 < data.length) {
+      for (int i = esdsPos + 4; i < esdsPos + 40 && i + 3 < data.length; i++) {
+        if (data[i] == 0x05) {
+          int offset = i + 1;
+          while (offset < data.length && (data[offset] & 0x80) != 0) {
+            offset++;
+          }
+          offset++; // skip last length byte
+          if (offset + 1 < data.length) {
+            final b0 = data[offset];
+            final b1 = data[offset + 1];
+            profile = (b0 >> 3) & 0x1F;
+            freqIndex = ((b0 & 0x07) << 1) | ((b1 >> 7) & 0x01);
+            chanCfg = (b1 >> 3) & 0x0F;
+            hasConfig = true;
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  Uint8List? extractAdtsFromM4s(Uint8List data) {
+    final trunPos = _findPattern(data, [0x74, 0x72, 0x75, 0x6E]); // 'trun'
+    if (trunPos == -1 || trunPos + 12 > data.length) return null;
+
+    final flags = (data[trunPos + 5] << 16) | (data[trunPos + 6] << 8) | data[trunPos + 7];
+    final sampleCount = (data[trunPos + 8] << 24) |
+        (data[trunPos + 9] << 16) |
+        (data[trunPos + 10] << 8) |
+        data[trunPos + 11];
+
+    int idx = trunPos + 12;
+    if ((flags & 0x01) != 0) idx += 4;
+    if ((flags & 0x04) != 0) idx += 4;
+
+    final sampleSizes = <int>[];
+    for (int i = 0; i < sampleCount; i++) {
+      if (idx >= data.length) break;
+      if ((flags & 0x100) != 0) idx += 4;
+      if ((flags & 0x200) != 0) {
+        if (idx + 4 <= data.length) {
+          final sz = (data[idx] << 24) | (data[idx + 1] << 16) | (data[idx + 2] << 8) | data[idx + 3];
+          sampleSizes.add(sz);
+          idx += 4;
+        }
+      }
+      if ((flags & 0x400) != 0) idx += 4;
+      if ((flags & 0x800) != 0) idx += 4;
+    }
+
+    if (sampleSizes.isEmpty) return null;
+
+    final mdatPos = _findPattern(data, [0x6D, 0x64, 0x61, 0x74]); // 'mdat'
+    if (mdatPos == -1 || mdatPos + 8 > data.length) return null;
+
+    int payloadOffset = mdatPos + 8;
+    final builder = BytesBuilder(copy: false);
+
+    for (int i = 0; i < sampleSizes.length; i++) {
+      final sz = sampleSizes[i];
+      if (payloadOffset + sz > data.length) break;
+
+      final frameLen = sz + 7;
+      final hdr = Uint8List(7);
+      hdr[0] = 0xFF;
+      hdr[1] = 0xF1; // MPEG-4, Layer 0, no CRC
+      hdr[2] = (((profile - 1) & 0x3) << 6) | ((freqIndex & 0xF) << 2) | ((chanCfg >> 2) & 0x1);
+      hdr[3] = ((chanCfg & 0x3) << 6) | ((frameLen >> 11) & 0x3);
+      hdr[4] = (frameLen >> 3) & 0xFF;
+      hdr[5] = ((frameLen & 7) << 5) | 0x1F;
+      hdr[6] = 0xFC;
+
+      builder.add(hdr);
+      builder.add(Uint8List.sublistView(data, payloadOffset, payloadOffset + sz));
+      payloadOffset += sz;
+    }
+
+    return builder.takeBytes();
+  }
+
+  static int _findPattern(Uint8List data, List<int> pattern) {
+    if (data.length < pattern.length) return -1;
+    final end = data.length - pattern.length;
+    for (int i = 0; i <= end; i++) {
+      bool match = true;
+      for (int j = 0; j < pattern.length; j++) {
+        if (data[i + j] != pattern[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return i;
+    }
+    return -1;
+  }
+}
+
 /// Service responsible for recording any internet radio stream
 /// supporting both HLS (.m3u8 with fMP4/TS/AAC) and Direct streams (MP3/AAC/OGG/Shoutcast).
 class StreamRecorderService {
@@ -20,7 +128,8 @@ class StreamRecorderService {
 
   // HLS tracking state
   final Set<String> _downloadedSegmentUris = <String>{};
-  bool _initSegmentWritten = false;
+  final Fmp4AacExtractor _fmp4Extractor = Fmp4AacExtractor();
+  bool _initSegmentFetched = false;
   bool _isFetchingHls = false;
 
   bool get isRecording => _isRecording;
@@ -39,18 +148,16 @@ class StreamRecorderService {
   }
 
   /// Probes the stream to determine if it is HLS or direct stream,
-  /// and discovers the best file extension (.mp3, .m4a, .aac, .ogg, etc.).
+  /// and discovers the best file extension (.mp3, .aac, .ogg, etc.).
   static Future<_StreamMeta> _probeStream(String rawUrl) async {
     final cleanUrl = rawUrl.split('#').first.trim();
     final uri = Uri.parse(cleanUrl);
 
-    // Check URL pattern first
     final pathLower = uri.path.toLowerCase();
     if (pathLower.endsWith('.m3u8') || pathLower.contains('/hls/')) {
-      return _StreamMeta(isHls: true, cleanUrl: cleanUrl, extension: 'm4a');
+      return _StreamMeta(isHls: true, cleanUrl: cleanUrl, extension: 'aac');
     }
 
-    // Probe via HTTP request with HEAD or initial GET
     try {
       final client = http.Client();
       final req = http.Request('GET', uri)
@@ -66,32 +173,31 @@ class StreamRecorderService {
       client.close();
 
       if (ctype.contains('mpegurl') || ctype.contains('m3u8')) {
-        return _StreamMeta(isHls: true, cleanUrl: cleanUrl, extension: 'm4a');
+        return _StreamMeta(isHls: true, cleanUrl: cleanUrl, extension: 'aac');
       }
 
       String ext = 'mp3';
       if (ctype.contains('audio/aac') || ctype.contains('audio/aacp')) {
         ext = 'aac';
       } else if (ctype.contains('audio/mp4') || ctype.contains('audio/x-m4a')) {
-        ext = 'm4a';
+        ext = 'aac';
       } else if (ctype.contains('audio/ogg') || ctype.contains('application/ogg')) {
         ext = 'ogg';
       } else if (pathLower.endsWith('.aac')) {
         ext = 'aac';
       } else if (pathLower.endsWith('.m4a')) {
-        ext = 'm4a';
+        ext = 'aac';
       } else if (pathLower.endsWith('.ogg')) {
         ext = 'ogg';
       }
 
       return _StreamMeta(isHls: false, cleanUrl: cleanUrl, extension: ext);
     } catch (_) {
-      // Fallback: check extension from URL
       final isHls = pathLower.endsWith('.m3u8');
       return _StreamMeta(
         isHls: isHls,
         cleanUrl: cleanUrl,
-        extension: isHls ? 'm4a' : 'mp3',
+        extension: isHls ? 'aac' : 'mp3',
       );
     }
   }
@@ -138,15 +244,12 @@ class StreamRecorderService {
     }
   }
 
-  /// Handles recording of HLS (.m3u8) streams by fetching playlist chunks sequentially.
   Future<void> _startHlsRecording(String playlistUrl) async {
     _downloadedSegmentUris.clear();
-    _initSegmentWritten = false;
+    _initSegmentFetched = false;
 
-    // Do immediate first fetch
     await _pollHlsPlaylist(playlistUrl);
 
-    // Periodically poll for new segments every 2.5 seconds
     _hlsPollingTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) {
       if (!_isRecording) return;
       _pollHlsPlaylist(playlistUrl);
@@ -175,7 +278,6 @@ class StreamRecorderService {
       final body = response.body;
       final lines = body.split('\n');
 
-      // Check if this is a Master Playlist (contains other playlists)
       String? childPlaylistUrl;
       for (final line in lines) {
         final trimmed = line.trim();
@@ -188,13 +290,11 @@ class StreamRecorderService {
       }
 
       if (childPlaylistUrl != null) {
-        // Switch to the media playlist
         _isFetchingHls = false;
         await _pollHlsPlaylist(childPlaylistUrl);
         return;
       }
 
-      // Check for fMP4 init segment: #EXT-X-MAP:URI="init.mp4"
       String? initSegmentUri;
       final mediaSegmentUris = <String>[];
 
@@ -210,17 +310,15 @@ class StreamRecorderService {
         }
       }
 
-      // 1. Download initialization segment if present and not yet written
-      if (initSegmentUri != null && !_initSegmentWritten && _isRecording) {
+      if (initSegmentUri != null && !_initSegmentFetched && _isRecording) {
         final resolvedInit = uri.resolve(initSegmentUri);
         final initBytes = await _fetchChunk(resolvedInit);
         if (initBytes != null && _isRecording) {
-          _fileSink?.add(initBytes);
-          _initSegmentWritten = true;
+          _fmp4Extractor.parseInitSegment(initBytes);
+          _initSegmentFetched = true;
         }
       }
 
-      // 2. Download any new media segments
       for (final seg in mediaSegmentUris) {
         if (!_isRecording) break;
         final resolvedSeg = uri.resolve(seg);
@@ -229,8 +327,6 @@ class StreamRecorderService {
         if (!_downloadedSegmentUris.contains(segKey)) {
           _downloadedSegmentUris.add(segKey);
 
-          // If this is our very first poll and there are many historical segments,
-          // only grab the last 2 segments to avoid huge back-log delay:
           if (_downloadedSegmentUris.length == 1 && mediaSegmentUris.length > 3) {
             final idx = mediaSegmentUris.indexOf(seg);
             if (idx < mediaSegmentUris.length - 2) {
@@ -240,12 +336,17 @@ class StreamRecorderService {
 
           final chunkBytes = await _fetchChunk(resolvedSeg);
           if (chunkBytes != null && _isRecording) {
-            _fileSink?.add(chunkBytes);
+            // Check if chunk is fMP4 (.m4s) and extract pure ADTS AAC frames
+            final adtsBytes = _fmp4Extractor.extractAdtsFromM4s(chunkBytes);
+            if (adtsBytes != null) {
+              _fileSink?.add(adtsBytes);
+            } else {
+              _fileSink?.add(chunkBytes);
+            }
           }
         }
       }
     } catch (_) {
-      // Ignore transient network errors during live polling; will retry next tick
     } finally {
       _isFetchingHls = false;
     }
@@ -268,7 +369,6 @@ class StreamRecorderService {
     return null;
   }
 
-  /// Handles recording of direct HTTP/Icecast/Shoutcast streams.
   Future<void> _startDirectRecording(String streamUrl) async {
     final uri = Uri.parse(streamUrl);
 
@@ -295,11 +395,8 @@ class StreamRecorderService {
         );
         return;
       }
-    } catch (_) {
-      // Standard HttpClient failed (e.g. Shoutcast v1 ICY 200 OK), try raw socket fallback
-    }
+    } catch (_) {}
 
-    // Raw Socket Fallback for Shoutcast v1 servers that send non-standard 'ICY 200 OK'
     await _startRawSocketFallback(uri);
   }
 
@@ -329,7 +426,6 @@ class StreamRecorderService {
 
           if (!headersParsed) {
             headerBuffer.addAll(data);
-            // Search for end of headers: \r\n\r\n (13, 10, 13, 10)
             int bodyStart = -1;
             for (int i = 0; i < headerBuffer.length - 3; i++) {
               if (headerBuffer[i] == 13 &&
@@ -360,7 +456,6 @@ class StreamRecorderService {
     }
   }
 
-  /// Stops any ongoing recording safely and flushes file sink.
   Future<void> stopRecording() async {
     _isRecording = false;
     _hlsPollingTimer?.cancel();

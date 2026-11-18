@@ -824,6 +824,14 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
                       isCurrent: isCurrent,
                       isPlaying: isCurrent && isPlaying,
                       onTap: () => _playStation(audioHandler, station),
+                      onEdit: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AddStationScreen(stationToEdit: station),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
