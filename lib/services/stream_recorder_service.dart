@@ -13,9 +13,10 @@ class Fmp4AacExtractor {
   bool hasConfig = false;
 
   void parseInitSegment(Uint8List data) {
+    // 1. Try 'esds' and extract AudioSpecificConfig
     final esdsPos = _findPattern(data, [0x65, 0x73, 0x64, 0x73]); // 'esds'
     if (esdsPos != -1 && esdsPos + 8 < data.length) {
-      for (int i = esdsPos + 4; i < esdsPos + 40 && i + 3 < data.length; i++) {
+      for (int i = esdsPos + 4; i < esdsPos + 60 && i + 3 < data.length; i++) {
         if (data[i] == 0x05) {
           int offset = i + 1;
           while (offset < data.length && (data[offset] & 0x80) != 0) {
@@ -25,14 +26,53 @@ class Fmp4AacExtractor {
           if (offset + 1 < data.length) {
             final b0 = data[offset];
             final b1 = data[offset + 1];
-            profile = (b0 >> 3) & 0x1F;
-            freqIndex = ((b0 & 0x07) << 1) | ((b1 >> 7) & 0x01);
-            chanCfg = (b1 >> 3) & 0x0F;
-            hasConfig = true;
-            return;
+            final p = (b0 >> 3) & 0x1F;
+            final f = ((b0 & 0x07) << 1) | ((b1 >> 7) & 0x01);
+            final c = (b1 >> 3) & 0x0F;
+            if (f < 13 && c > 0) {
+              profile = p;
+              freqIndex = f;
+              chanCfg = c;
+              hasConfig = true;
+              return;
+            }
           }
         }
       }
+    }
+
+    // 2. Fallback: Parse 'mp4a' box directly
+    final mp4aPos = _findPattern(data, [0x6D, 0x70, 0x34, 0x61]); // 'mp4a'
+    if (mp4aPos != -1 && mp4aPos + 30 < data.length) {
+      final channels = (data[mp4aPos + 20] << 8) | data[mp4aPos + 21];
+      final sampleRate = (data[mp4aPos + 28] << 8) | data[mp4aPos + 29];
+      if (channels > 0 && channels <= 8) chanCfg = channels;
+      if (sampleRate > 0) {
+        freqIndex = _sampleRateToFreqIndex(sampleRate);
+      }
+      profile = 2; // AAC LC default
+      hasConfig = true;
+    }
+  }
+
+  static int _sampleRateToFreqIndex(int rate) {
+    switch (rate) {
+      case 96000: return 0;
+      case 88200: return 1;
+      case 64000: return 2;
+      case 48000: return 3;
+      case 44100: return 4;
+      case 32000: return 5;
+      case 24000: return 6;
+      case 22050: return 7;
+      case 16000: return 8;
+      case 12000: return 9;
+      case 11025: return 10;
+      case 8000:  return 11;
+      case 7350:  return 12;
+      default:
+        if (rate >= 46000) return 3;
+        return 4;
     }
   }
 
@@ -46,8 +86,15 @@ class Fmp4AacExtractor {
         (data[trunPos + 10] << 8) |
         data[trunPos + 11];
 
+    if (sampleCount <= 0 || sampleCount > 5000) return null;
+
     int idx = trunPos + 12;
-    if ((flags & 0x01) != 0) idx += 4;
+    int? dataOffset;
+    if ((flags & 0x01) != 0) {
+      if (idx + 4 > data.length) return null;
+      dataOffset = (data[idx] << 24) | (data[idx + 1] << 16) | (data[idx + 2] << 8) | data[idx + 3];
+      idx += 4;
+    }
     if ((flags & 0x04) != 0) idx += 4;
 
     final sampleSizes = <int>[];
@@ -65,12 +112,51 @@ class Fmp4AacExtractor {
       if ((flags & 0x800) != 0) idx += 4;
     }
 
+    // Fallback to default_sample_size in tfhd if sample_size was not in trun
+    if (sampleSizes.isEmpty) {
+      final tfhdPos = _findPattern(data, [0x74, 0x66, 0x68, 0x64]); // 'tfhd'
+      if (tfhdPos != -1 && tfhdPos + 12 < data.length) {
+        final tfFlags = (data[tfhdPos + 5] << 16) | (data[tfhdPos + 6] << 8) | data[tfhdPos + 7];
+        int tfIdx = tfhdPos + 12;
+        if ((tfFlags & 0x01) != 0) tfIdx += 8;
+        if ((tfFlags & 0x02) != 0) tfIdx += 4;
+        if ((tfFlags & 0x08) != 0) tfIdx += 4;
+        if ((tfFlags & 0x10) != 0 && tfIdx + 4 <= data.length) {
+          final defSize = (data[tfIdx] << 24) | (data[tfIdx + 1] << 16) | (data[tfIdx + 2] << 8) | data[tfIdx + 3];
+          if (defSize > 0) {
+            for (int i = 0; i < sampleCount; i++) {
+              sampleSizes.add(defSize);
+            }
+          }
+        }
+      }
+    }
+
     if (sampleSizes.isEmpty) return null;
 
     final mdatPos = _findPattern(data, [0x6D, 0x64, 0x61, 0x74]); // 'mdat'
-    if (mdatPos == -1 || mdatPos + 8 > data.length) return null;
+    if (mdatPos == -1) return null;
 
-    int payloadOffset = mdatPos + 8;
+    int payloadOffset;
+    if (dataOffset != null) {
+      final moofPos = _findPattern(data, [0x6D, 0x6F, 0x6F, 0x66]); // 'moof'
+      if (moofPos != -1) {
+        final moofStart = moofPos >= 4 ? moofPos - 4 : 0;
+        payloadOffset = moofStart + dataOffset;
+      } else {
+        payloadOffset = mdatPos + 4;
+      }
+    } else {
+      final is64Bit = (mdatPos >= 4 &&
+          data[mdatPos - 4] == 0 &&
+          data[mdatPos - 3] == 0 &&
+          data[mdatPos - 2] == 0 &&
+          data[mdatPos - 1] == 1);
+      payloadOffset = mdatPos + (is64Bit ? 12 : 4);
+    }
+
+    if (payloadOffset >= data.length) return null;
+
     final builder = BytesBuilder(copy: false);
 
     for (int i = 0; i < sampleSizes.length; i++) {
@@ -92,7 +178,8 @@ class Fmp4AacExtractor {
       payloadOffset += sz;
     }
 
-    return builder.takeBytes();
+    final result = builder.takeBytes();
+    return result.isNotEmpty ? result : null;
   }
 
   static int _findPattern(Uint8List data, List<int> pattern) {
@@ -137,14 +224,13 @@ class StreamRecorderService {
 
   static String sanitizePrefix(String? stationName) {
     if (stationName == null || stationName.trim().isEmpty) return 'Atheer_Live';
-    final ascii = stationName
-        .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
-    if (ascii.length >= 2) {
-      return ascii.length > 20 ? ascii.substring(0, 20) : ascii;
+    // Remove characters illegal in file paths: / \ : * ? " < > |
+    var clean = stationName.replaceAll(RegExp(r'[/\\:*?"<>|]'), ' ').trim();
+    clean = clean.replaceAll(RegExp(r'\s+'), ' ');
+    if (clean.length > 50) {
+      clean = clean.substring(0, 50).trim();
     }
-    return 'Atheer_Live';
+    return clean.isNotEmpty ? clean : 'Atheer_Live';
   }
 
   /// Probes the stream to determine if it is HLS or direct stream,

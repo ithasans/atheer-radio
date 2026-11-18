@@ -186,6 +186,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
     final timerState = ref.watch(sleepTimerProvider);
     final recState = ref.watch(recordingProvider);
     final isRecording = recState.isRecording;
+    final isStarting = recState.isStarting;
     final isFav = favorites.any((s) => s.streamUrl == widget.station.streamUrl || (s.id.isNotEmpty && s.id == widget.station.id));
     final isRtl = lang == 'ar';
 
@@ -579,20 +580,38 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                                               ]
                                             : null,
                                       ),
-                                      child: IconButton(
-                                        iconSize: 26,
-                                        icon: Icon(
-                                          isRecording ? Icons.stop_rounded : Icons.fiber_manual_record_rounded,
-                                          color: isRecording ? AppTheme.accentRecord : Colors.redAccent,
-                                        ),
-                                        onPressed: widget.onToggleRecord,
-                                      ),
+                                      child: isStarting
+                                          ? const SizedBox(
+                                              width: 48,
+                                              height: 48,
+                                              child: Padding(
+                                                padding: EdgeInsets.all(12),
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2.5,
+                                                  color: Colors.redAccent,
+                                                ),
+                                              ),
+                                            )
+                                          : IconButton(
+                                              iconSize: 26,
+                                              icon: Icon(
+                                                isRecording ? Icons.stop_rounded : Icons.fiber_manual_record_rounded,
+                                                color: isRecording ? AppTheme.accentRecord : Colors.redAccent,
+                                              ),
+                                              onPressed: widget.onToggleRecord,
+                                            ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
-                                      isRecording ? AppStrings.get('stop_record', lang) : AppStrings.get('record', lang),
+                                      isStarting
+                                          ? AppStrings.get('starting_recording', lang)
+                                          : (isRecording ? AppStrings.get('stop_record', lang) : AppStrings.get('record', lang)),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: isRecording ? AppTheme.accentRecord : AppTheme.textMuted,
+                                        color: isRecording
+                                            ? AppTheme.accentRecord
+                                            : (isStarting ? AppTheme.primary : AppTheme.textMuted),
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
                                       ),

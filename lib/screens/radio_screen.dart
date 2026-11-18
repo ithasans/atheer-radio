@@ -224,6 +224,11 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
   }
 
   Future<void> _toggleStreamRecording(Station station, String lang) async {
+    final recordingState = ref.read(recordingProvider);
+    if (!recordingState.isRecording && !recordingState.isStarting) {
+      _showSnackBar(AppStrings.get('starting_recording', lang));
+    }
+
     final result = await ref.read(recordingProvider.notifier).toggleRecording(
           streamUrl: station.playableUrl,
           stationName: station.name,
@@ -233,7 +238,7 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
       _showSnackBar(AppStrings.get('recording_started', lang));
     } else if (result == 'stopped') {
       _showSnackBar(AppStrings.get('recording_saved', lang));
-    } else {
+    } else if (result == 'error') {
       _showSnackBar(AppStrings.get('record_not_supported', lang));
     }
   }

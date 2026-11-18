@@ -4,12 +4,14 @@ import 'package:myradio1/services/stream_recorder_service.dart';
 
 class RecordingState {
   final bool isRecording;
+  final bool isStarting;
   final int elapsedSeconds;
   final String? stationName;
   final String? filePath;
 
   const RecordingState({
     this.isRecording = false,
+    this.isStarting = false,
     this.elapsedSeconds = 0,
     this.stationName,
     this.filePath,
@@ -23,12 +25,14 @@ class RecordingState {
 
   RecordingState copyWith({
     bool? isRecording,
+    bool? isStarting,
     int? elapsedSeconds,
     String? stationName,
     String? filePath,
   }) {
     return RecordingState(
       isRecording: isRecording ?? this.isRecording,
+      isStarting: isStarting ?? this.isStarting,
       elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
       stationName: stationName ?? this.stationName,
       filePath: filePath ?? this.filePath,
@@ -59,6 +63,10 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
       return 'stopped';
     }
 
+    if (state.isStarting) return 'starting';
+
+    state = state.copyWith(isStarting: true);
+
     try {
       final filePath = await _recorder.startRecording(
         streamUrl: streamUrl,
@@ -66,12 +74,13 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
       );
 
       if (filePath == null) {
-        state = const RecordingState(isRecording: false);
+        state = const RecordingState(isRecording: false, isStarting: false);
         return 'error';
       }
 
       state = RecordingState(
         isRecording: true,
+        isStarting: false,
         elapsedSeconds: 0,
         stationName: stationName,
         filePath: filePath,
@@ -86,6 +95,7 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
       return 'started';
     } catch (_) {
       await stopRecording();
+      state = const RecordingState(isRecording: false, isStarting: false);
       return 'error';
     }
   }
@@ -97,6 +107,7 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
     if (mounted) {
       state = const RecordingState(
         isRecording: false,
+        isStarting: false,
         elapsedSeconds: 0,
       );
     }

@@ -161,6 +161,20 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
     return '$minutes:$seconds';
   }
 
+  String _getStationTitle(String fileName) {
+    String baseName = fileName;
+    final dotIdx = fileName.lastIndexOf('.');
+    if (dotIdx != -1) {
+      baseName = fileName.substring(0, dotIdx);
+    }
+    final stampRegex = RegExp(r'_\d{8}_\d{6}$');
+    if (stampRegex.hasMatch(baseName)) {
+      final title = baseName.replaceFirst(stampRegex, '').trim();
+      if (title.isNotEmpty) return title;
+    }
+    return baseName.trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = ref.watch(localeProvider);
@@ -250,13 +264,13 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Text(
-                                              fileName,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
+                                              _getStationTitle(fileName),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.visible,
                                               style: TextStyle(
-                                                fontSize: 13,
+                                                fontSize: 14,
                                                 fontWeight: FontWeight.bold,
-                                                color: isCurrent ? AppTheme.primary : null,
+                                                color: isCurrent ? AppTheme.primary : AppTheme.textPrimary,
                                               ),
                                             ),
                                             const SizedBox(height: 5),
