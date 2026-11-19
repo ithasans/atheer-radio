@@ -166,8 +166,8 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
     }
   }
 
-  void _handleStopAction(bool isLivePlaying) {
-    if (isLivePlaying) {
+  void _handleStopAction(bool isLivePlaying, bool isLoading) {
+    if (isLivePlaying || isLoading) {
       widget.audioHandler.stop();
     } else {
       widget.audioHandler.playFromUrl(
@@ -667,7 +667,7 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                                           isLivePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
                                           color: isLivePlaying ? AppTheme.accentRecord : AppTheme.textSecondary,
                                         ),
-                                        onPressed: () => _handleStopAction(isLivePlaying),
+                                        onPressed: () => _handleStopAction(isLivePlaying, isLoading),
                                       ),
                                     ),
                                     const SizedBox(height: 6),

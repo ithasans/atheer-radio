@@ -118,6 +118,7 @@ class MasperoStreamResolver {
   }
 
   /// Resolves the URL dynamically to a fresh direct audio HLS URL.
+  /// Uses pure Dart HttpClient for unified, instantaneous resolution across all platforms.
   static Future<String> resolveStreamUrl(String rawUrl) async {
     if (!isMasperoUrl(rawUrl)) {
       return rawUrl;
@@ -135,13 +136,7 @@ class MasperoStreamResolver {
     }
 
     try {
-      String? resolved;
-      if (Platform.isWindows) {
-        resolved = await _resolveOnWindows(videoId);
-      } else {
-        resolved = await _resolveGeneric(videoId);
-      }
-
+      final resolved = await _resolveDirect(videoId);
       if (resolved != null && resolved.isNotEmpty) {
         _cache[videoId] = _CachedResolvedStream(resolved);
         return resolved;
@@ -150,57 +145,17 @@ class MasperoStreamResolver {
       debugPrint('MasperoStreamResolver error: $e');
     }
 
-    // Return cached even if expired, or fallback to rawUrl
     return cached?.url ?? rawUrl;
   }
 
-  /// Windows resolution using native curl through PowerShell for TLS/cookie negotiation.
-  static Future<String?> _resolveOnWindows(String videoId) async {
-    try {
-      final tempDir = Directory.systemTemp.path.replaceAll(r'\', '/');
-      final tempCookie = '$tempDir/dm_c_$videoId.txt';
-      final tempJson = '$tempDir/dm_m_$videoId.json';
-
-      final script = '''
-\$ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-curl.exe -s -c "$tempCookie" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -H "priority: u=1, i" "https://www.dailymotion.com/player/metadata/video/$videoId?app=com.dailymotion.neon" -o "$tempJson"
-if (Test-Path "$tempJson") {
-  \$meta = Get-Content "$tempJson" -Raw | ConvertFrom-Json
-  \$m3u8 = \$meta.qualities.auto[0].url
-  if (\$m3u8) {
-    curl.exe -s -b "$tempCookie" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -H "priority: u=1, i" "\$m3u8"
-  }
-  Remove-Item "$tempJson" -Force -ErrorAction SilentlyContinue
-}
-Remove-Item "$tempCookie" -Force -ErrorAction SilentlyContinue
-''';
-
-      final res = await Process.run('powershell', [
-        '-NoProfile',
-        '-STA',
-        '-Command',
-        script,
-      ]);
-
-      if (res.exitCode == 0) {
-        final out = res.stdout.toString();
-        final match = RegExp(r'URI="([^"]+)"').firstMatch(out);
-        if (match != null) {
-          return match.group(1);
-        }
-      }
-    } catch (e) {
-      debugPrint('Maspero Windows resolution error: $e');
-    }
-    return null;
-  }
-
-  /// Cross-platform fallback resolution using standard HttpClient
-  static Future<String?> _resolveGeneric(String videoId) async {
+  /// Direct cross-platform resolution using Dart HttpClient.
+  /// Works reliably on Windows, Android, Linux, macOS and iOS without external processes.
+  static Future<String?> _resolveDirect(String videoId) async {
     HttpClient? client;
     try {
       client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 8);
+
       final metaUri = Uri.parse(
         'https://www.dailymotion.com/player/metadata/video/$videoId?app=com.dailymotion.neon',
       );
@@ -209,7 +164,7 @@ Remove-Item "$tempCookie" -Force -ErrorAction SilentlyContinue
       metaReq.headers.set('priority', 'u=1, i');
       metaReq.headers.set('Accept', '*/*');
 
-      final metaRes = await metaReq.close();
+      final metaRes = await metaReq.close().timeout(const Duration(seconds: 8));
       if (metaRes.statusCode == 200) {
         final metaBody = await metaRes.transform(utf8.decoder).join();
         final metaJson = json.decode(metaBody) as Map<String, dynamic>;
@@ -222,19 +177,20 @@ Remove-Item "$tempCookie" -Force -ErrorAction SilentlyContinue
           for (final c in metaRes.cookies) {
             m3u8Req.cookies.add(Cookie(c.name, c.value));
           }
-          final m3u8Res = await m3u8Req.close();
+          final m3u8Res = await m3u8Req.close().timeout(const Duration(seconds: 8));
           if (m3u8Res.statusCode == 200) {
             final m3u8Body = await m3u8Res.transform(utf8.decoder).join();
             final match = RegExp(r'URI="([^"]+)"').firstMatch(m3u8Body);
             if (match != null) {
-              return match.group(1);
+              final directAudio = match.group(1)!.split('#').first.trim();
+              return directAudio;
             }
           }
-          return m3u8Url;
+          return m3u8Url.split('#').first.trim();
         }
       }
     } catch (e) {
-      debugPrint('Maspero generic resolution error: $e');
+      debugPrint('Maspero direct resolution error: $e');
     } finally {
       client?.close();
     }
