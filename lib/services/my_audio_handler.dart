@@ -92,6 +92,12 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
       await _player.play();
     } catch (e) {
       debugPrint('Error loading audio source: $e');
+      playbackState.add(
+        playbackState.value.copyWith(
+          processingState: AudioProcessingState.error,
+          errorMessage: e.toString(),
+        ),
+      );
     }
   }
 
