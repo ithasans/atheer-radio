@@ -155,6 +155,7 @@ class MasperoStreamResolver {
     try {
       client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 8);
+      client.findProxy = HttpClient.findProxyFromEnvironment;
 
       final metaUri = Uri.parse(
         'https://www.dailymotion.com/player/metadata/video/$videoId?app=com.dailymotion.neon',

@@ -91,11 +91,7 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
     mediaItem.add(item);
 
     try {
-      if (Platform.isWindows || Platform.isLinux) {
-        await _player.setUrl(effectiveUrl);
-      } else {
-        await _player.setAudioSource(AudioSource.uri(effectiveUri), preload: false);
-      }
+      await _player.setAudioSource(AudioSource.uri(effectiveUri), preload: false);
       await _player.play();
     } catch (e) {
       debugPrint('Error loading audio source: $e');

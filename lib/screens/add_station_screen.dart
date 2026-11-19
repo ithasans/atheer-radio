@@ -206,7 +206,7 @@ class _AddStationScreenState extends ConsumerState<AddStationScreen> {
       _previewPlayer ??= AudioPlayer();
       try {
         if (mounted) setState(() => _isPlayingPreview = true);
-        await _previewPlayer!.setUrl(rawUrl);
+        await _previewPlayer!.setUrl(rawUrl, preload: false);
         await _previewPlayer!.play();
       } catch (e) {
         if (mounted) setState(() => _isPlayingPreview = false);

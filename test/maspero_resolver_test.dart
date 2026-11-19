@@ -49,5 +49,11 @@ void main() {
       expect(MasperoStreamResolver.extractVideoId('https://www.dailymotion.com/video/x8n6dyz'), equals('x8n6dyz'));
       expect(MasperoStreamResolver.extractVideoId('https://example.com/audio.mp3'), isNull);
     });
+
+    test('resolveStreamUrl returns non-Maspero URL untouched', () async {
+      const normalUrl = 'https://stream.radiojar.com/8s5u5tpdtwzuv';
+      final resolved = await MasperoStreamResolver.resolveStreamUrl(normalUrl);
+      expect(resolved, equals(normalUrl));
+    });
   });
 }
