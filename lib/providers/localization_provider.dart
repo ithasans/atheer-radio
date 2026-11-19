@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -53,7 +54,9 @@ class AppStrings {
       'starting_recording': 'جاري بدء التسجيل... يرجى الانتظار',
       'stop_record': 'إيقاف التسجيل',
       'recording_started': 'بدأ تسجيل البث المباشر رقمياً...',
-      'recording_saved': 'تم حفظ التسجيل في ذاكرة الهاتف بنجاح',
+      'recording_saved': (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+          ? 'تم حفظ التسجيل في مجلد التسجيلات بنجاح'
+          : 'تم حفظ التسجيل في ذاكرة الهاتف بنجاح',
       'storage_perm_required': 'يرجى منح صلاحية التخزين لحفظ التسجيل',
       'record_not_supported': 'تعذر تسجيل هذا البث المباشر حالياً',
       'stop': 'إيقاف',

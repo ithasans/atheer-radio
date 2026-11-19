@@ -90,6 +90,7 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
     final isAr = lang == 'ar';
     final currentPath = _currentDir?.path ?? '';
     final controller = TextEditingController(text: currentPath);
+    bool shouldMoveFiles = true;
 
     await showDialog(
       context: context,
@@ -108,65 +109,94 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                isAr
-                    ? 'اختر المجلد الذي ترغب في حفظ تسجيلات البث الحي بداخله:'
-                    : 'Choose the folder where live recordings should be saved:',
-                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                decoration: InputDecoration(
-                  labelText: isAr ? 'مسار المجلد' : 'Folder Path',
-                  hintText: isAr ? 'مثال: D:\\RadioRecordings' : 'e.g. D:\\RadioRecordings',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  prefixIcon: const Icon(Icons.folder_open_rounded, color: AppTheme.primary),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isAr
+                      ? 'اختر المجلد الذي ترغب في حفظ تسجيلات البث الحي بداخله:'
+                      : 'Choose the folder where live recordings should be saved:',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.search_rounded, size: 18),
-                  label: Text(isAr ? 'تصفح واختيار مجلد...' : 'Browse Folder...'),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    labelText: isAr ? 'مسار المجلد' : 'Folder Path',
+                    hintText: isAr ? 'مثال: D:\\RadioRecordings' : 'e.g. D:\\RadioRecordings',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.folder_open_rounded, color: AppTheme.primary),
                   ),
-                  onPressed: () async {
-                    final picked = await StreamRecorderService.pickFolderOnWindows();
-                    if (picked != null && picked.isNotEmpty) {
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.search_rounded, size: 18),
+                    label: Text(isAr ? 'تصفح واختيار مجلد...' : 'Browse Folder...'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: () async {
+                      final picked = await StreamRecorderService.pickFolderOnWindows();
+                      if (picked != null && picked.isNotEmpty) {
+                        setDialogState(() {
+                          controller.text = picked;
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: isAr ? Alignment.centerRight : Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.restore_rounded, size: 16, color: AppTheme.textMuted),
+                    label: Text(
+                      isAr ? 'استعادة المجلد الافتراضي' : 'Reset to Default',
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    ),
+                    onPressed: () async {
+                      await StreamRecorderService.setCustomRecordingsDirectory(null);
+                      final defDir = await StreamRecorderService.getRecordingsDirectory();
                       setDialogState(() {
-                        controller.text = picked;
+                        controller.text = defDir?.path ?? '';
                       });
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: isAr ? Alignment.centerRight : Alignment.centerLeft,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.restore_rounded, size: 16, color: AppTheme.textMuted),
-                  label: Text(
-                    isAr ? 'استعادة المجلد الافتراضي' : 'Reset to Default',
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    },
                   ),
-                  onPressed: () async {
-                    await StreamRecorderService.setCustomRecordingsDirectory(null);
-                    final defDir = await StreamRecorderService.getRecordingsDirectory();
-                    setDialogState(() {
-                      controller.text = defDir?.path ?? '';
-                    });
-                  },
                 ),
-              ),
-            ],
+                if (_recordings.isNotEmpty) ...[
+                  const Divider(height: 20),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    activeColor: AppTheme.primary,
+                    checkColor: Colors.black,
+                    value: shouldMoveFiles,
+                    title: Text(
+                      isAr
+                          ? 'نقل كافة التسجيلات السابقة (${_recordings.length}) إلى المجلد الجديد'
+                          : 'Move existing recordings (${_recordings.length}) to new folder',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      isAr
+                          ? 'لضمان بقاء تسجيلاتك القديمة متاحة ومعروضة'
+                          : 'Ensures previous recordings remain available',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    ),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        shouldMoveFiles = val ?? true;
+                      });
+                    },
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -183,21 +213,61 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
                 final targetPath = controller.text.trim();
                 final messenger = ScaffoldMessenger.of(context);
                 final nav = Navigator.of(ctx);
+                final oldDir = _currentDir;
+
+                bool success = false;
                 if (targetPath.isNotEmpty) {
-                  await StreamRecorderService.setCustomRecordingsDirectory(targetPath);
+                  success = await StreamRecorderService.setCustomRecordingsDirectory(targetPath);
                 } else {
-                  await StreamRecorderService.setCustomRecordingsDirectory(null);
+                  success = await StreamRecorderService.setCustomRecordingsDirectory(null);
                 }
+
+                int movedCount = 0;
+                if (success && shouldMoveFiles && oldDir != null) {
+                  final newDir = await StreamRecorderService.getRecordingsDirectory();
+                  if (newDir != null && oldDir.path.toLowerCase() != newDir.path.toLowerCase()) {
+                    const supportedExtensions = ['.mp3', '.m4a', '.aac', '.ogg', '.wav', '.flac', '.ts'];
+                    if (await oldDir.exists()) {
+                      final files = oldDir.listSync().where((f) {
+                        final lower = f.path.toLowerCase();
+                        return supportedExtensions.any((ext) => lower.endsWith(ext));
+                      }).toList();
+
+                      for (final entity in files) {
+                        if (entity is File) {
+                          final name = entity.path.split(Platform.pathSeparator).last;
+                          final newPath = '${newDir.path}${Platform.pathSeparator}$name';
+                          try {
+                            await entity.rename(newPath);
+                            movedCount++;
+                          } catch (_) {
+                            try {
+                              await entity.copy(newPath);
+                              await entity.delete();
+                              movedCount++;
+                            } catch (_) {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
                 if (!mounted) return;
                 nav.pop();
                 _loadRecordings();
+
+                final feedbackMsg = isAr
+                    ? (movedCount > 0
+                        ? 'تم حفظ المجلد الجديد ونقل $movedCount من التسجيلات بنجاح'
+                        : 'تم حفظ وتحديث مجلد التسجيلات بنجاح')
+                    : (movedCount > 0
+                        ? 'Folder updated and $movedCount recordings moved successfully'
+                        : 'Recording directory updated successfully');
+
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text(
-                      isAr
-                          ? 'تم حفظ وتحديث مجلد التسجيلات بنجاح'
-                          : 'Recording directory updated successfully',
-                    ),
+                    content: Text(feedbackMsg),
                     backgroundColor: AppTheme.primary,
                   ),
                 );
