@@ -15,6 +15,7 @@ import 'package:myradio1/providers/recording_provider.dart';
 import 'package:myradio1/screens/add_station_screen.dart';
 import 'package:myradio1/screens/drive_mode_screen.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
+import 'package:myradio1/services/maspero_stream_resolver.dart';
 import 'package:myradio1/services/share_service.dart';
 import 'package:myradio1/theme/app_theme.dart';
 import 'package:myradio1/utils/country_names.dart';
@@ -54,6 +55,7 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
 
   final List<Map<String, String>> _categories = const [
     {'key': 'cat_all', 'tag': ''},
+    {'key': 'cat_maspero', 'tag': 'maspero'},
     {'key': 'cat_quran', 'tag': 'quran'},
     {'key': 'cat_news', 'tag': 'news'},
     {'key': 'cat_talk', 'tag': 'talk'},
@@ -156,15 +158,28 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
       _isLoadingStations = true;
       _stationsError = false;
     });
+    final isEgypt = country.toLowerCase() == 'egypt' ||
+        country == 'مصر' ||
+        _selectedCountryCode?.toUpperCase() == 'EG';
     final data = await _getFromMirrors(
       '/json/stations/bycountry/${Uri.encodeComponent(country)}?order=votes&reverse=true&limit=100',
     );
     if (!mounted) return;
     setState(() {
       if (data != null) {
-        _stations = _mapAndPrioritizeStations(data);
+        var mapped = _mapAndPrioritizeStations(data);
+        if (isEgypt) {
+          final maspero = MasperoStreamResolver.getMasperoStations();
+          mapped = [...maspero, ...mapped];
+        }
+        _stations = mapped;
       } else {
-        _stationsError = true;
+        if (isEgypt) {
+          _stations = MasperoStreamResolver.getMasperoStations();
+          _stationsError = false;
+        } else {
+          _stationsError = true;
+        }
       }
       _isLoadingStations = false;
     });
@@ -173,6 +188,14 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
   Future<void> _fetchStationsByTag(String tag) async {
     if (tag.isEmpty) {
       await _fetchDefaultExploreStations();
+      return;
+    }
+    if (tag == 'maspero') {
+      setState(() {
+        _stations = MasperoStreamResolver.getMasperoStations();
+        _isLoadingStations = false;
+        _stationsError = false;
+      });
       return;
     }
     setState(() {
@@ -194,20 +217,36 @@ class _RadioScreenState extends ConsumerState<RadioScreen> with SingleTickerProv
   }
 
   Future<void> _searchStations(String query) async {
-    if (query.trim().isEmpty) return;
+    final cleanQ = query.trim().toLowerCase();
+    if (cleanQ.isEmpty) return;
     setState(() {
       _isLoadingStations = true;
       _stationsError = false;
     });
+    final masperoMatches = MasperoStreamResolver.getMasperoStations().where((s) {
+      return s.name.toLowerCase().contains(cleanQ) ||
+          (s.tags?.toLowerCase().contains(cleanQ) ?? false) ||
+          cleanQ.contains('ماسبيرو') ||
+          cleanQ.contains('maspero');
+    }).toList();
+
     final data = await _getFromMirrors(
       '/json/stations/byname/${Uri.encodeComponent(query.trim())}?order=votes&reverse=true&limit=80',
     );
     if (!mounted) return;
     setState(() {
       if (data != null) {
-        _stations = _mapAndPrioritizeStations(data);
+        final fetched = _mapAndPrioritizeStations(data);
+        final fetchedFiltered =
+            fetched.where((f) => !masperoMatches.any((m) => m.name == f.name)).toList();
+        _stations = [...masperoMatches, ...fetchedFiltered];
       } else {
-        _stationsError = true;
+        if (masperoMatches.isNotEmpty) {
+          _stations = masperoMatches;
+          _stationsError = false;
+        } else {
+          _stationsError = true;
+        }
       }
       _isLoadingStations = false;
     });

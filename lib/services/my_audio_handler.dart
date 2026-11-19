@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
+import 'package:myradio1/services/maspero_stream_resolver.dart';
 import 'package:myradio1/utils/encoding_utils.dart';
 
 class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAudioHandler {
@@ -70,14 +71,15 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
   Future<void> playFromUrl(String url, {String? title, String? artist, String? artUri}) async {
     _lastUrl = url;
     _retryCount = 0;
-    final uri = Uri.parse(url);
+    final effectiveUrl = await MasperoStreamResolver.resolveStreamUrl(url);
+    final effectiveUri = Uri.parse(effectiveUrl);
     final decodedArtist = EncodingUtils.decodeStreamMetadata(artist);
     final country = decodedArtist.isNotEmpty ? decodedArtist : 'بث حي';
     final decodedTitle = EncodingUtils.decodeStreamMetadata(title);
     final cleanTitle = decodedTitle.isNotEmpty ? decodedTitle : 'راديو مباشر';
 
     final item = MediaItem(
-      id: uri.toString(),
+      id: url,
       title: cleanTitle,
       artist: country,
       artUri: (artUri != null && artUri.isNotEmpty) ? Uri.tryParse(artUri) : null,
@@ -90,9 +92,9 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
 
     try {
       if (Platform.isWindows || Platform.isLinux) {
-        await _player.setUrl(url);
+        await _player.setUrl(effectiveUrl);
       } else {
-        await _player.setAudioSource(AudioSource.uri(uri), preload: false);
+        await _player.setAudioSource(AudioSource.uri(effectiveUri), preload: false);
       }
       await _player.play();
     } catch (e) {

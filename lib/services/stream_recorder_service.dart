@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:myradio1/services/maspero_stream_resolver.dart';
 
 /// Helper to extract raw AAC frames from fragmented MP4 (.m4s) chunks
 /// and wrap each frame with a standard 7-byte ADTS header for immediate, universal playback.
@@ -446,7 +447,8 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         await musicDir.create(recursive: true);
       }
 
-      final meta = await _probeStream(streamUrl);
+      final effectiveUrl = await MasperoStreamResolver.resolveStreamUrl(streamUrl);
+      final meta = await _probeStream(effectiveUrl);
       final now = DateTime.now();
       final stamp =
           '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
