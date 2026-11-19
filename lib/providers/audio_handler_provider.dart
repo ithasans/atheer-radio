@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,9 @@ final currentStationProvider = StateProvider<Station?>((ref) => null);
 
 /// A FutureProvider that initializes the AudioHandler with full background support.
 final audioHandlerProvider = FutureProvider<AppAudioHandler>((ref) async {
+  if (Platform.isWindows || Platform.isLinux) {
+    return MyAudioHandler();
+  }
   return await AudioService.init(
     builder: () => MyAudioHandler(),
     config: const AudioServiceConfig(

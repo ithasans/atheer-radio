@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -14,7 +15,7 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
 
   MyAudioHandler() {
     _player = AudioPlayer(
-      audioPipeline: AudioPipeline(androidAudioEffects: [_equalizer]),
+      audioPipeline: Platform.isAndroid ? AudioPipeline(androidAudioEffects: [_equalizer]) : null,
     );
 
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
@@ -88,7 +89,11 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
     mediaItem.add(item);
 
     try {
-      await _player.setAudioSource(AudioSource.uri(uri), preload: false);
+      if (Platform.isWindows || Platform.isLinux) {
+        await _player.setUrl(url);
+      } else {
+        await _player.setAudioSource(AudioSource.uri(uri), preload: false);
+      }
       await _player.play();
     } catch (e) {
       debugPrint('Error loading audio source: $e');
