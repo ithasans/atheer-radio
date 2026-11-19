@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:myradio1/services/app_audio_handler.dart';
+import 'package:myradio1/services/maspero_live_proxy.dart';
 import 'package:myradio1/services/maspero_stream_resolver.dart';
 import 'package:myradio1/utils/encoding_utils.dart';
 
@@ -71,6 +72,9 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
   Future<void> playFromUrl(String url, {String? title, String? artist, String? artUri}) async {
     _lastUrl = url;
     _retryCount = 0;
+    if (!MasperoStreamResolver.isMasperoUrl(url)) {
+      MasperoLiveProxy.stop();
+    }
     final effectiveUrl = await MasperoStreamResolver.resolveStreamUrl(url);
     final effectiveUri = Uri.parse(effectiveUrl);
     final decodedArtist = EncodingUtils.decodeStreamMetadata(artist);
@@ -122,8 +126,13 @@ class MyAudioHandler extends BaseAudioHandler with SeekHandler implements AppAud
   @override
   Future<void> stop() async {
     _lastUrl = null;
+    MasperoLiveProxy.stop();
     await _player.stop();
-    await playbackState.firstWhere((state) => state.processingState == AudioProcessingState.idle);
+    try {
+      await playbackState
+          .firstWhere((state) => state.processingState == AudioProcessingState.idle)
+          .timeout(const Duration(milliseconds: 600));
+    } catch (_) {}
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {

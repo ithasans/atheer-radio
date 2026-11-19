@@ -635,7 +635,15 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                                     ],
                                   ),
                                   child: isLoading
-                                      ? const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                                      ? IconButton(
+                                          icon: const SizedBox(
+                                            width: 28,
+                                            height: 28,
+                                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                          ),
+                                          tooltip: AppStrings.get('stop', lang),
+                                          onPressed: () => widget.audioHandler.stop(),
+                                        )
                                       : IconButton(
                                           iconSize: isCompact ? 36 : 42,
                                           icon: Icon(
@@ -653,28 +661,28 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                                     Container(
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: isLivePlaying
+                                        color: (isLivePlaying || isLoading)
                                             ? AppTheme.accentRecord.withValues(alpha: 0.15)
                                             : AppTheme.surfaceElevated,
                                         border: Border.all(
-                                          color: isLivePlaying ? AppTheme.accentRecord : AppTheme.border,
+                                          color: (isLivePlaying || isLoading) ? AppTheme.accentRecord : AppTheme.border,
                                           width: 1.5,
                                         ),
                                       ),
                                       child: IconButton(
                                         iconSize: 26,
                                         icon: Icon(
-                                          isLivePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                                          color: isLivePlaying ? AppTheme.accentRecord : AppTheme.textSecondary,
+                                          (isLivePlaying || isLoading) ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                                          color: (isLivePlaying || isLoading) ? AppTheme.accentRecord : AppTheme.textSecondary,
                                         ),
                                         onPressed: () => _handleStopAction(isLivePlaying, isLoading),
                                       ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
-                                      isLivePlaying ? AppStrings.get('stop', lang) : AppStrings.get('play', lang),
+                                      (isLivePlaying || isLoading) ? AppStrings.get('stop', lang) : AppStrings.get('play', lang),
                                       style: TextStyle(
-                                        color: isLivePlaying ? AppTheme.accentRecord : AppTheme.textMuted,
+                                        color: (isLivePlaying || isLoading) ? AppTheme.accentRecord : AppTheme.textMuted,
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
                                       ),

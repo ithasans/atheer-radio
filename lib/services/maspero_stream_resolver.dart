@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:myradio1/models/station.dart';
+import 'package:myradio1/services/maspero_live_proxy.dart';
 
 class _CachedResolvedStream {
   final String url;
@@ -117,8 +118,9 @@ class MasperoStreamResolver {
     return match?.group(0);
   }
 
-  /// Resolves the URL dynamically to a fresh direct audio HLS URL.
-  /// Uses pure Dart HttpClient for unified, instantaneous resolution across all platforms.
+  /// Resolves the URL dynamically to a fresh direct audio HLS URL or local proxy URL.
+  /// On desktop (Windows / Linux), streams through MasperoLiveProxy for universal ADTS AAC playback.
+  /// On mobile (Android / iOS), returns the direct HLS stream URL for native ExoPlayer / AVPlayer playback.
   static Future<String> resolveStreamUrl(String rawUrl) async {
     if (!isMasperoUrl(rawUrl)) {
       return rawUrl;
@@ -127,6 +129,13 @@ class MasperoStreamResolver {
     final videoId = extractVideoId(rawUrl);
     if (videoId == null || videoId.isEmpty) {
       return rawUrl;
+    }
+
+    if (Platform.isWindows || Platform.isLinux) {
+      final proxyUrl = await MasperoLiveProxy.getOrStartProxy(rawUrl);
+      if (proxyUrl != null && proxyUrl.isNotEmpty) {
+        return proxyUrl;
+      }
     }
 
     // Check memory cache
@@ -146,6 +155,20 @@ class MasperoStreamResolver {
     }
 
     return cached?.url ?? rawUrl;
+  }
+
+  /// Resolves the raw HLS child playlist URL (used by Mobile and by MasperoLiveProxy on Desktop).
+  static Future<String?> resolveChildPlaylistUrl(String videoId) async {
+    final cached = _cache[videoId];
+    if (cached != null && !cached.isExpired) {
+      return cached.url;
+    }
+    final resolved = await _resolveDirect(videoId);
+    if (resolved != null && resolved.isNotEmpty) {
+      _cache[videoId] = _CachedResolvedStream(resolved);
+      return resolved;
+    }
+    return null;
   }
 
   /// Direct cross-platform resolution using Dart HttpClient.
