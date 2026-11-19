@@ -166,16 +166,16 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
     }
   }
 
-  void _handleStopAction(bool isStopped) {
-    if (isStopped) {
+  void _handleStopAction(bool isLivePlaying) {
+    if (isLivePlaying) {
+      widget.audioHandler.stop();
+    } else {
       widget.audioHandler.playFromUrl(
         widget.station.playableUrl,
         title: widget.station.name,
         artist: widget.station.country,
         artUri: widget.station.favicon,
       );
-    } else {
-      widget.audioHandler.stop();
     }
   }
 
@@ -653,26 +653,28 @@ class _FullPlayerState extends ConsumerState<FullPlayer> {
                                     Container(
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: isStopped ? AppTheme.primary.withValues(alpha: 0.15) : AppTheme.surfaceElevated,
+                                        color: isLivePlaying
+                                            ? AppTheme.accentRecord.withValues(alpha: 0.15)
+                                            : AppTheme.surfaceElevated,
                                         border: Border.all(
-                                          color: isStopped ? AppTheme.primary : AppTheme.border,
+                                          color: isLivePlaying ? AppTheme.accentRecord : AppTheme.border,
                                           width: 1.5,
                                         ),
                                       ),
                                       child: IconButton(
                                         iconSize: 26,
                                         icon: Icon(
-                                          isStopped ? Icons.play_arrow_rounded : Icons.stop_rounded,
-                                          color: isStopped ? AppTheme.primary : AppTheme.textSecondary,
+                                          isLivePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                                          color: isLivePlaying ? AppTheme.accentRecord : AppTheme.textSecondary,
                                         ),
-                                        onPressed: () => _handleStopAction(isStopped),
+                                        onPressed: () => _handleStopAction(isLivePlaying),
                                       ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
-                                      isStopped ? AppStrings.get('play', lang) : AppStrings.get('stop', lang),
+                                      isLivePlaying ? AppStrings.get('stop', lang) : AppStrings.get('play', lang),
                                       style: TextStyle(
-                                        color: isStopped ? AppTheme.primary : AppTheme.textMuted,
+                                        color: isLivePlaying ? AppTheme.accentRecord : AppTheme.textMuted,
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
                                       ),
