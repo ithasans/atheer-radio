@@ -16,6 +16,7 @@ dependencies:
   
   # Audio Playback
   just_audio: ^0.10.5
+  just_audio_windows: ^0.2.2
   audio_service: ^0.18.12
   
   # Other useful packages
