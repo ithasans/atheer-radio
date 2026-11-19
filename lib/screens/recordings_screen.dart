@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:myradio1/providers/localization_provider.dart';
 import 'package:myradio1/services/share_service.dart';
+import 'package:myradio1/services/stream_recorder_service.dart';
 import 'package:myradio1/theme/app_theme.dart';
 import 'package:myradio1/widgets/audio_visualizer.dart';
 
@@ -23,6 +23,7 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
   bool _isPlaying = false;
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
+  Directory? _currentDir;
 
   @override
   void initState() {
@@ -62,7 +63,8 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
   Future<void> _loadRecordings() async {
     setState(() => _isLoading = true);
     try {
-      final Directory? musicDir = await getExternalStorageDirectory();
+      final Directory? musicDir = await StreamRecorderService.getRecordingsDirectory();
+      _currentDir = musicDir;
       if (musicDir != null && await musicDir.exists()) {
         const supportedExtensions = ['.mp3', '.m4a', '.aac', '.ogg', '.wav', '.flac', '.ts'];
         final files = musicDir.listSync().where((f) {
@@ -82,6 +84,130 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _showChangeFolderDialog(String lang) async {
+    final isAr = lang == 'ar';
+    final currentPath = _currentDir?.path ?? '';
+    final controller = TextEditingController(text: currentPath);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.folder_special_rounded, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isAr ? 'مجلد حفظ التسجيلات' : 'Recordings Save Folder',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isAr
+                    ? 'اختر المجلد الذي ترغب في حفظ تسجيلات البث الحي بداخله:'
+                    : 'Choose the folder where live recordings should be saved:',
+                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: isAr ? 'مسار المجلد' : 'Folder Path',
+                  hintText: isAr ? 'مثال: D:\\RadioRecordings' : 'e.g. D:\\RadioRecordings',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.folder_open_rounded, color: AppTheme.primary),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.search_rounded, size: 18),
+                  label: Text(isAr ? 'تصفح واختيار مجلد...' : 'Browse Folder...'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  onPressed: () async {
+                    final picked = await StreamRecorderService.pickFolderOnWindows();
+                    if (picked != null && picked.isNotEmpty) {
+                      setDialogState(() {
+                        controller.text = picked;
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: isAr ? Alignment.centerRight : Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.restore_rounded, size: 16, color: AppTheme.textMuted),
+                  label: Text(
+                    isAr ? 'استعادة المجلد الافتراضي' : 'Reset to Default',
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  ),
+                  onPressed: () async {
+                    await StreamRecorderService.setCustomRecordingsDirectory(null);
+                    final defDir = await StreamRecorderService.getRecordingsDirectory();
+                    setDialogState(() {
+                      controller.text = defDir?.path ?? '';
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(AppStrings.get('cancel', lang)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                final targetPath = controller.text.trim();
+                final messenger = ScaffoldMessenger.of(context);
+                final nav = Navigator.of(ctx);
+                if (targetPath.isNotEmpty) {
+                  await StreamRecorderService.setCustomRecordingsDirectory(targetPath);
+                } else {
+                  await StreamRecorderService.setCustomRecordingsDirectory(null);
+                }
+                if (!mounted) return;
+                nav.pop();
+                _loadRecordings();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      isAr
+                          ? 'تم حفظ وتحديث مجلد التسجيلات بنجاح'
+                          : 'Recording directory updated successfully',
+                    ),
+                    backgroundColor: AppTheme.primary,
+                  ),
+                );
+              },
+              child: Text(isAr ? 'حفظ' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _playRecording(String path) async {
@@ -186,6 +312,25 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
         appBar: AppBar(
           title: Text(AppStrings.get('recordings_library', lang)),
           actions: [
+            if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) ...[
+              IconButton(
+                icon: const Icon(Icons.create_new_folder_outlined),
+                tooltip: lang == 'ar' ? 'تغيير مجلد الحفظ' : 'Change save folder',
+                onPressed: () => _showChangeFolderDialog(lang),
+              ),
+              IconButton(
+                icon: const Icon(Icons.folder_open_rounded),
+                tooltip: lang == 'ar' ? 'فتح مجلد التسجيلات' : 'Open recordings folder',
+                onPressed: () async {
+                  final dir = _currentDir ?? await StreamRecorderService.getRecordingsDirectory();
+                  if (dir != null && await dir.exists()) {
+                    if (Platform.isWindows) {
+                      Process.run('explorer.exe', [dir.path.replaceAll('/', '\\')]);
+                    }
+                  }
+                },
+              ),
+            ],
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               onPressed: _loadRecordings,
@@ -194,6 +339,62 @@ class _RecordingsScreenState extends ConsumerState<RecordingsScreen> {
         ),
         body: Column(
           children: [
+            if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _currentDir != null)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.folder_rounded, color: AppTheme.primary, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isRtl ? 'مجلد الحفظ المختار:' : 'Save Folder:',
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _currentDir!.path,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      ),
+                      icon: const Icon(Icons.edit_location_alt_outlined, size: 16, color: AppTheme.primary),
+                      label: Text(
+                        isRtl ? 'تغيير' : 'Change',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onPressed: () => _showChangeFolderDialog(lang),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))

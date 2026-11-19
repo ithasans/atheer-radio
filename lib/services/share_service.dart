@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/services.dart';
 
 class ShareService {
@@ -18,6 +19,14 @@ class ShareService {
   }
 
   static Future<bool> shareFile(String path, {String? title}) async {
+    if (Platform.isWindows) {
+      try {
+        await Process.run('explorer.exe', ['/select,', path.replaceAll('/', '\\')]);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
     try {
       final result = await _channel.invokeMethod<bool>('shareFile', {
         'path': path,

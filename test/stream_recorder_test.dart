@@ -10,6 +10,13 @@ void main() {
       expect(StreamRecorderService.sanitizePrefix(null), 'Atheer_Live');
       expect(StreamRecorderService.sanitizePrefix('   '), 'Atheer_Live');
       expect(StreamRecorderService.sanitizePrefix('Asharq/News*123'), 'Asharq News 123');
+      expect(StreamRecorderService.sanitizePrefix('Radio...'), 'Radio');
+    });
+
+    test('getRecordingsDirectory returns valid directory and creates it if needed', () async {
+      final dir = await StreamRecorderService.getRecordingsDirectory();
+      expect(dir, isNotNull);
+      expect(await dir!.exists(), isTrue);
     });
 
     test('Identifies HLS streams from URL patterns', () {

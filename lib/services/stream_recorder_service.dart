@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Helper to extract raw AAC frames from fragmented MP4 (.m4s) chunks
 /// and wrap each frame with a standard 7-byte ADTS header for immediate, universal playback.
@@ -224,13 +227,152 @@ class StreamRecorderService {
 
   static String sanitizePrefix(String? stationName) {
     if (stationName == null || stationName.trim().isEmpty) return 'Atheer_Live';
-    // Remove characters illegal in file paths: / \ : * ? " < > |
-    var clean = stationName.replaceAll(RegExp(r'[/\\:*?"<>|]'), ' ').trim();
+    // Remove characters illegal in file paths: / \ : * ? " < > | and control chars
+    var clean = stationName.replaceAll(RegExp(r'[\x00-\x1F/\\:*?"<>|]'), ' ').trim();
     clean = clean.replaceAll(RegExp(r'\s+'), ' ');
+    clean = clean.replaceAll(RegExp(r'[.\s]+$'), '').trim();
     if (clean.length > 50) {
       clean = clean.substring(0, 50).trim();
     }
     return clean.isNotEmpty ? clean : 'Atheer_Live';
+  }
+
+  static const String customRecordingsDirKey = 'custom_recordings_dir';
+
+  /// Gets any user-selected custom directory path from SharedPreferences.
+  static Future<String?> getCustomRecordingsDirectoryPath() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final path = prefs.getString(customRecordingsDirKey);
+      if (path != null && path.trim().isNotEmpty) {
+        return path.trim();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Sets or clears a user-selected custom directory for recordings.
+  static Future<bool> setCustomRecordingsDirectory(String? path) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (path == null || path.trim().isEmpty) {
+        await prefs.remove(customRecordingsDirKey);
+        return true;
+      }
+      final dir = Directory(path.trim());
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      await prefs.setString(customRecordingsDirKey, dir.path);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens native Windows FolderBrowserDialog to pick a directory visually.
+  static Future<String?> pickFolderOnWindows() async {
+    if (!Platform.isWindows) return null;
+    try {
+      const script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'اختر مجلد حفظ تسجيلات البث المباشر'
+$dialog.ShowNewFolderButton = $true
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    Write-Output $dialog.SelectedPath
+}
+""";
+      final res = await Process.run('powershell', [
+        '-NoProfile',
+        '-STA',
+        '-Command',
+        script,
+      ], stdoutEncoding: utf8);
+
+      final out = res.stdout.toString().trim();
+      if (out.isNotEmpty && Directory(out).existsSync()) {
+        return out;
+      }
+    } catch (e) {
+      debugPrint('Error picking folder via PowerShell: $e');
+    }
+    return null;
+  }
+
+  /// Returns a valid, platform-appropriate directory for saving audio recordings.
+  /// On Android: Uses external storage directory (or app documents if unavailable).
+  /// On Windows: Uses user-selected folder if set, otherwise Documents\AtheerRadio\Recordings.
+  /// On macOS/Linux: Uses user's Documents/AtheerRadio/Recordings directory.
+  static Future<Directory?> getRecordingsDirectory() async {
+    try {
+      if (Platform.isAndroid) {
+        final Directory? musicDir = await getExternalStorageDirectory();
+        if (musicDir != null) {
+          if (!await musicDir.exists()) {
+            await musicDir.create(recursive: true);
+          }
+          return musicDir;
+        }
+      }
+
+      if (Platform.isWindows) {
+        // 1. Check if user configured a custom directory
+        final customPath = await getCustomRecordingsDirectoryPath();
+        if (customPath != null) {
+          final customDir = Directory(customPath);
+          if (await customDir.exists()) {
+            return customDir;
+          } else {
+            try {
+              await customDir.create(recursive: true);
+              return customDir;
+            } catch (_) {}
+          }
+        }
+
+        // 2. Default to Documents\AtheerRadio\Recordings
+        final userProfile = Platform.environment['USERPROFILE'];
+        if (userProfile != null && userProfile.trim().isNotEmpty) {
+          final dir = Directory(
+            '$userProfile${Platform.pathSeparator}Documents${Platform.pathSeparator}AtheerRadio${Platform.pathSeparator}Recordings',
+          );
+          if (!await dir.exists()) {
+            await dir.create(recursive: true);
+          }
+          return dir;
+        }
+      }
+
+      final baseDir = await getApplicationDocumentsDirectory();
+      final radioDir = Directory(
+        '${baseDir.path}${Platform.pathSeparator}AtheerRadio${Platform.pathSeparator}Recordings',
+      );
+      if (!await radioDir.exists()) {
+        await radioDir.create(recursive: true);
+      }
+      return radioDir;
+    } catch (_) {
+      try {
+        if (Platform.isWindows) {
+          final userProfile = Platform.environment['USERPROFILE'] ?? 'C:';
+          final dir = Directory('$userProfile\\AtheerRadio\\Recordings');
+          if (!await dir.exists()) await dir.create(recursive: true);
+          return dir;
+        }
+        final fallbackDir = await getApplicationSupportDirectory();
+        final radioDir = Directory(
+          '${fallbackDir.path}${Platform.pathSeparator}Recordings',
+        );
+        if (!await radioDir.exists()) {
+          await radioDir.create(recursive: true);
+        }
+        return radioDir;
+      } catch (_) {
+        return null;
+      }
+    }
   }
 
   /// Probes the stream to determine if it is HLS or direct stream,
@@ -298,7 +440,7 @@ class StreamRecorderService {
     }
 
     try {
-      final Directory? musicDir = await getExternalStorageDirectory();
+      final Directory? musicDir = await getRecordingsDirectory();
       if (musicDir == null) return null;
       if (!await musicDir.exists()) {
         await musicDir.create(recursive: true);
@@ -310,7 +452,8 @@ class StreamRecorderService {
           '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
       final prefix = sanitizePrefix(stationName);
 
-      final filePath = '${musicDir.path}/${prefix}_$stamp.${meta.extension}';
+      final filePath =
+          '${musicDir.path}${Platform.pathSeparator}${prefix}_$stamp.${meta.extension}';
       _currentFile = File(filePath);
       _fileSink = _currentFile!.openWrite(mode: FileMode.writeOnly);
       _isRecording = true;
